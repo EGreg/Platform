@@ -473,8 +473,8 @@ class Q_Request
 	
 	
 	/**
-	 * Use this to determine whether or not it the request is an "AJAX"
-	 * request, and is not expecting a full document layout.
+	 * Use this to determine whether or not it the client expects
+	 * JSON in the response, or this is an "AJAX" request
 	 * @method isAjax
 	 * @static
 	 * @return {string} The contents of `Q.ajax` if it is present.
@@ -494,7 +494,36 @@ class Q_Request
 			return $result;
 		}
 		$result = Q_Request::special('ajax', false);
+		if ($result === false) {
+			$result = self::expectsJSON();
+		}
 		return $result;
+	}
+
+	/**
+	 * Use this to determine whether the client expects JSON
+	 * in the response
+	 * @method expectsJSON
+	 * @static
+	 * @return {string} The contents of `Q.ajax` if it is present.
+	 */
+	static function expectsJSON()
+	{
+		$acceptHeader = $_SERVER['HTTP_ACCEPT'] ? $_SERVER['HTTP_ACCEPT'] : '';
+		$acceptHeader = strtolower(trim($acceptHeader));
+		$acceptTypes = array_map('trim', explode(',', $acceptHeader));
+		foreach ($acceptTypes as $type) {
+			// Allow only "application/json" or variations like "application/json; charset=UTF-8"
+			if (preg_match('#^application/json($|[ ;])#', $type)) {
+				return true;
+			}
+
+			// False if any type accepts text/html or other non-JSON types
+			if (str_contains($type, 'text/html') || str_contains($type, 'application/xhtml+xml')) {
+				return false;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -843,7 +872,11 @@ class Q_Request
 		} else {
 			$source = array_merge($_GET, $_POST, $_COOKIE);
 		}
-		// PHP replaces dots with underscores
+		// Try with dots first. It may be parsed from JSON.
+		if (isset($source["Q.$fieldname"])) {
+			return $source["Q.$fieldname"];
+		}
+		// PHP replaces dots with underscores in HTTP requests
 		if (isset($source["Q_$fieldname"])) {
 			return $source["Q_$fieldname"];
 		}
@@ -915,18 +948,21 @@ class Q_Request
 		$platform = self::platform();
 		$useragent = $_SERVER['HTTP_USER_AGENT'];
 		$len = strlen($useragent);
+		$test = array('ios' => 'OS ', 'android' => 'Android ');
 		switch ($platform) {
 			case 'ios':
-				$index = strpos($useragent, 'OS ');
-				if ($index === false) return null;
-				$ver = substr($useragent, $index + 3, 3);
-				return implode('.', explode('_', $ver));
-				break;
 			case 'android':
-				$index = strpos($useragent, 'Android ');
-				if ($index === false) return null;
-				return substr($useragent, $index + 8, 3);
-				break;
+				$start = strpos($useragent, $test[$platform]);
+				$testlen = strlen($test[$platform]);
+				if ($start === false) return null;
+				for ($end = $start + $testlen; $end < $len; ++$end) {
+					$char = $useragent[$end];
+					if (!ctype_alnum($char) && $char !== '_' && $char !== '.') {
+						break;
+					}
+				}
+				$ver = substr($useragent, $start + $testlen, $end - $start - $testlen);
+				return implode('.', explode('_', $ver));
 			case 'mac':
 			case 'windows':
 			case 'linux':
@@ -975,29 +1011,37 @@ class Q_Request
 	}
 	
 	/**
-	 * Returns the name of the browser that made the request
-	 * @return {string} can be "ie", "firefox", "chrome", "safari", "opera", otherwise null
+	 * Returns the name of the browser that made the request.
+	 * @return {string|null} Can be "edge", "opera", "chrome", "firefox", "safari", "ie", otherwise null.
 	 */
 	static function browser()
 	{
 		if (!isset($_SERVER['HTTP_USER_AGENT'])) {
 			return null;
 		}
-		$userAgent = strtolower($_SERVER['HTTP_USER_AGENT']);
+
+		$ua = strtolower($_SERVER['HTTP_USER_AGENT']);
+
+		// Order matters — check more specific first
 		$detect = array(
-			'msie' => 'ie',
+			'edg'     => 'edge',
+			'opr'     => 'opera',      // Opera (Blink-based)
+			'chrome'  => 'chrome',     // Must come before 'safari'
 			'firefox' => 'firefox',
-			'chrome' => 'chrome',
-			'safari' => 'safari',
-			'opera' => 'opera'
+			'safari'  => 'safari',
+			'msie'    => 'ie',         // IE < 11
+			'trident' => 'ie'          // IE 11
 		);
-		foreach ($detect as $k => $v) {
-			if (strpos($userAgent, $k) !== false) {
-				return $v;
+
+		foreach ($detect as $needle => $name) {
+			if (strpos($ua, $needle) !== false) {
+				return $name;
 			}
 		}
+
 		return null;
 	}
+
 	
 	/**
 	 * Returns the app's id on the platform

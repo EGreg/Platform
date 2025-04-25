@@ -206,7 +206,7 @@ class Q_Session
 		$baseUrl = Q_Request::baseUrl();
 		$parts = parse_url($baseUrl);
 		$path = !empty($parts['path']) ? $parts['path'] : '/';
-		$domain = '.'.$parts['host'];
+		$domain = '';
 
 		Q::event('Q/session/init', array(
 			'name' => &$name,
@@ -283,14 +283,7 @@ class Q_Session
 			return false;
 		}
 		if (Q_Config::get('Q', 'session', 'custom', true)) {
-			session_set_save_handler(
-				array(__CLASS__, 'openHandler'),
-				array(__CLASS__, 'closeHandler'),
-				array(__CLASS__, 'readHandler'),
-				array(__CLASS__, 'writeHandler'),
-				array(__CLASS__, 'destroyHandler'),
-				array(__CLASS__, 'gcHandler')
-			);
+			self::setSessionHandlers();
 		}
 		if (!empty($_SESSION)) {
 			$pre_SESSION = $_SESSION;
@@ -501,6 +494,10 @@ class Q_Session
 	 */
 	static function regenerateId($destroy_old_session = false, $duration = null, $prefixType = '')
 	{
+		if (session_status() === PHP_SESSION_ACTIVE) {
+			session_abort(); // abort current session, don't save it here
+		}
+		
 		$old_SESSION = $_SESSION;
 		if ($destroy_old_session) {
 			self::destroy();
@@ -508,14 +505,7 @@ class Q_Session
 
 		// we have to re-set all the handlers, due to a bug in PHP 5.2
 		if (Q_Config::get('Q', 'session', 'custom', true)) {
-			session_set_save_handler(
-				array(__CLASS__, 'openHandler'),
-				array(__CLASS__, 'closeHandler'),
-				array(__CLASS__, 'readHandler'),
-				array(__CLASS__, 'writeHandler'),
-				array(__CLASS__, 'destroyHandler'),
-				array(__CLASS__, 'gcHandler')
-			);
+			self::setSessionHandlers();
 		}
 		session_id($sid = self::generateId(null, $prefixType)); // generate a new session id
 		session_start(); // start a new session
@@ -820,6 +810,7 @@ class Q_Session
 						flock($file, LOCK_UN);
 						fclose($file);
 					}
+					$result = true;
 				} else {
 					/**
 					 * @event Q/session/save {before}
@@ -949,6 +940,7 @@ class Q_Session
 		if ($proceed) {
 			self::gc($max_duration);
 		}
+		return true;
 	}
 
 	/**
@@ -1026,11 +1018,25 @@ class Q_Session
 		if (!$sessionId) {
 			return null;
 		}
+		$prefixes = Q_Config::get('Q', 'session', 'id', 'prefixes', array());
+		$longestPrefix = "";
+		$longestPrefixLen = 0;
+		$id = $sessionId;
+		foreach ($prefixes as $prefix) {
+			if (Q::startsWith($sessionId, $prefix)) {
+				$strlen = strlen($prefix);
+				if ($strlen > $longestPrefixLen) {
+					$longestPrefix = $prefix;
+					$longestPrefixLen = $strlen;
+					$id = substr($sessionId, $strlen);
+				}
+			}
+		}
 		$secret = Q_Config::get('Q', 'internal', 'secret', null);
 		if (!isset($secret)) {
 			$secret = Q::app();
 		}
-		return hash_hmac('sha256', $sessionId, $secret);
+		return $longestPrefix . hash_hmac('sha256', $id, $secret);
 	}
 
 	/**
@@ -1230,6 +1236,20 @@ class Q_Session
 	}
 
 	/**
+	 * Returns true if session ID starts with the prefix under config
+	 * 'Q', 'session', 'id', 'prefixes', 'internal'
+	 * @method isInternal
+	 * @static
+	 * @return {bool}
+	 */
+	static function isInternal()
+	{
+		return Q::startsWith(Q_Session::id(), Q_Config::get(
+			'Q', 'session', 'id', 'prefixes', 'internal', 'sessionId_internal_'
+		));
+	}
+
+	/**
 	 * Verifies a session id, that it was correctly signed with "Q"/"external"/"secret"
 	 * so that the web server won't have to deal with session ids we haven't issued.
 	 * This verification can also be done at the edge (e.g. CDN) without bothering our network.
@@ -1293,6 +1313,27 @@ class Q_Session
                 throw new Exception("Unsupported session.serialize_handler: " . $method . ". Supported: php, php_binary");
         }
     }
+
+	static function setSessionHandlers()
+	{
+		if (session_status() === PHP_SESSION_ACTIVE) {
+			session_abort(); // abort active session to reset handlers
+		}
+		if (version_compare(PHP_VERSION, '7.0.0', '<')) {
+			session_set_save_handler(
+				array(__CLASS__, 'openHandler'),
+				array(__CLASS__, 'closeHandler'),
+				array(__CLASS__, 'readHandler'),
+				array(__CLASS__, 'writeHandler'),
+				array(__CLASS__, 'destroyHandler'),
+				array(__CLASS__, 'gcHandler')
+			);
+		} else if (version_compare(PHP_VERSION, '8.0.0', '<')) {
+			session_set_save_handler(new Q_Session_Handlers());
+		} else {
+			session_set_save_handler(new Q_Session_Handlers8());
+		}
+	}
 
     protected static function unserialize_php($session_data) {
         $return_data = array();

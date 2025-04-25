@@ -375,7 +375,9 @@ class Db_Mysql implements Db_Interface
 	 *    You can put an array of fieldname => value pairs here,
 	 *    which will add an ON DUPLICATE KEY UPDATE clause to the query.
 	 *    Consider using new Db_Expression("VALUES(fieldName)") for the values of fields
-	 *    that you'd want to update on existing rows.
+	 *    that you'd want to update on existing rows, and Db_Expression("CURRENT_TIMESTAMP")
+	 *    for magic time fields.
+	 *    Or you can just pass true instead of an array, and the system will do it for you.
 	 */
 	function insertManyAndExecute ($table_into, array $rows = array(), $options = array())
 	{
@@ -391,6 +393,7 @@ class Db_Mysql implements Db_Interface
 			return false;
 		}
 		$possibleMagicInsertFields = array('insertedTime', 'created_time');
+		$possibleMagicUpdateFields = array('updatedTime', 'updated_time');
 		$onDuplicateKeyUpdate = isset($options['onDuplicateKeyUpdate'])
 				? $options['onDuplicateKeyUpdate'] : null;
 		$className = isset($options['className']) ? $options['className'] : null;
@@ -419,6 +422,29 @@ class Db_Mysql implements Db_Interface
 		if (isset($onDuplicateKeyUpdate)) {
 			$odku_clause = "\n\t ON DUPLICATE KEY UPDATE ";
 			$parts = array();
+			if ($onDuplicateKeyUpdate === true) {
+				if (empty($options['className'])) {
+					throw new Exception("Db_Mysql::insertManyAndExecute: need options['className'] when onDuplicateKeyUpdate === true");
+				}
+				$row = new $options['className'];
+				$primaryKey = $row->getPrimaryKey();
+				$onDuplicateKeyUpdate = array();
+				foreach ($columnsList as $c) {
+					$column = isset($rawColumns[$c]) ? $rawColumns[$c] : $c;
+					if (in_array($column, $primaryKey)) {
+						continue;
+					}
+					$onDuplicateKeyUpdate[$column] = in_array($column, $possibleMagicUpdateFields)
+						? new Db_Expression("CURRENT_TIMESTAMP")
+						: new Db_Expression("VALUES($column)");
+				}
+				$fieldNames = call_user_func(array($options['className'], 'fieldNames'));
+				foreach ($possibleMagicUpdateFields as $column) {
+					if (in_array($column, $fieldNames)) {
+						$onDuplicateKeyUpdate[$column] = new Db_Expression("CURRENT_TIMESTAMP");
+					}
+				}
+			}
 			foreach ($onDuplicateKeyUpdate as $k => $v) {
 				if ($v instanceof Db_Expression) {
 					$part = "= $v";

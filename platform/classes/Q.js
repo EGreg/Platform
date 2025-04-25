@@ -14,6 +14,14 @@ var events = require('events');
 var path = require('path');
 var fs = require('fs');
 
+console.log.startTracingSources = function () {
+	var _c = console.log;
+	console.log = function (a) {
+		_c(Q.stackTrace());
+		_c(a);
+	};
+	Q.extend(console.log, _c);
+};
 console.log.register = function (name) {
 	return console.log[name] = function() {
 		var params = Array.prototype.slice.call(arguments);
@@ -3432,7 +3440,7 @@ Sp.encodeHTML = function _String_prototype_encodeHTML(convert) {
 	if (convert) {
 		conversions = Q.take(conversions, convert);
 	}
-	return this.replaceAll(conversions);
+	return this.replaceAllPlaceholders(conversions);
 };
 
 /**
@@ -3455,7 +3463,7 @@ Sp.decodeHTML = function _String_prototype_decodeHTML(unconvert) {
 	if (unconvert) {
 		conversions = Q.take(conversions, unconvert);
 	}
-	return this.replaceAll(conversions);
+	return this.replaceAllPlaceholders(conversions);
 };
 
 /**
@@ -3495,7 +3503,7 @@ Sp.interpolate = function _String_prototype_interpolate(fields) {
  * @method replaceAll
  * @return {String}
  */
-Sp.replaceAll = function _String_prototype_replaceAll(pairs) {
+Sp.replaceAllPlaceholders = function _String_prototype_replaceAllPlaceholders(pairs) {
 	var result = this;
 	for (var k in pairs) {
 		result = result.replace(new RegExp(k, 'g'), pairs[k]);

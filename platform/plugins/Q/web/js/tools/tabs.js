@@ -53,8 +53,7 @@ Q.Tool.define("Q/tabs", function(options) {
 	}
 	
 	if (state.contextualHandler == null) {
-		state.contextualHandler = function ($jq, event) {
-			var element = $jq[0];
+		state.contextualHandler = function (element, event) {
 			tool.switchTo([element.getAttribute('data-name'), element], {
 				event: event
 			});
@@ -700,6 +699,12 @@ Q.Tool.define("Q/tabs", function(options) {
 			$overflow.addClass('Q_current');
 		}
 		tool.overflowIndex = index;
+		setTimeout(function () {
+			var $ct = $te.find('.Q_tabs_tab .Q_tabs_copiedTitle');
+			if ($ct.length) {
+				$ct[0].setClassIf($ct[0].isOverflowed(), 'Q_overflowed');
+			}
+		});
 		// if (tool.$overflow
 		// && (
 		// 	!tool.$overflow.data('contextual')
@@ -724,8 +729,8 @@ Q.Tool.define("Q/tabs", function(options) {
 				elements: elements,
 				className: "Q_tabs_contextual",
 				defaultHandler: state.contextualHandler,
-				onConstruct: function ($contextual) {
-					_addListeners(tool, $contextual);
+				onConstruct: function (contextual) {
+					_addListeners(tool, $(contextual));
 					Q.handle(state.onRefresh, this);
 					Q.handle(callback, tool);
 					tool.element.addClass('Q_tabs_arranged');

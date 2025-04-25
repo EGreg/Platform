@@ -219,7 +219,7 @@ Q.Tool.jQuery('Q/overlay',
 					Q.handle(data.options.onLoad, $this[0], [$this[0]]);
 				}
 			},
-			close: function(e)
+			close: function(e, options)
 			{
 				if (e) {
 					$.Event(e).preventDefault();
@@ -262,7 +262,7 @@ Q.Tool.jQuery('Q/overlay',
 							$('html').removeClass(htmlClass);
 						}
 					}
-					Q.handle(data.options.onClose, $this[0], []);
+					Q.handle(data.options.onClose, $this[0], [$this[0], options || {}]);
 					if (data.options.mask) {
 						Q.Masks.hide('Q.dialog.mask');
 					}
@@ -304,8 +304,8 @@ Q.Tool.jQuery('Q/overlay',
 		load: function () {
 			this.data('Q/overlay').load();
 		},
-		close: function () {
-			this.data('Q/overlay').close();
+		close: function (options) {
+			this.data('Q/overlay').close(null, options);
 		},
 		remove: function () {
 			this.each(function() {
@@ -406,11 +406,11 @@ Q.Tool.jQuery('Q/dialog', function _Q_dialog (o) {
 				}},
 				beforeClose: o.beforeClose,
 				onClose: { 
-					"Q/dialog": function () {
+					"Q/dialog": function (element, options) {
 						if (o.removeOnClose) {
 							Q.removeElement($this[0], true);
 						}
-						Q.handle(o.onClose, $this[0], [$this[0]]);
+						Q.handle(o.onClose, $this[0], [$this[0], options]);
 					},
 					"Q.Dialogs.updateMask": function () {
 						// set z-index of mask less than visible dialog element
@@ -489,7 +489,7 @@ Q.Tool.jQuery('Q/dialog', function _Q_dialog (o) {
 						});
 					}
 				},
-				close: function(e) {
+				close: function(e, options) {
 					if (false === Q.handle(o.beforeClose, $this[0], [$this[0]])) {
 						return false;
 					}
@@ -516,7 +516,7 @@ Q.Tool.jQuery('Q/dialog', function _Q_dialog (o) {
 						}
 					}
 
-					Q.handle(o.onClose, $this[0], [$this[0]]);
+					Q.handle(o.onClose, $this[0], [$this[0], options || {}]);
 					if (e) $.Event(e).preventDefault();
 				},
 				windowParams: windowParams
@@ -590,8 +590,8 @@ Q.Tool.jQuery('Q/dialog', function _Q_dialog (o) {
 		load: function () {
 			this.data('Q/dialog').load();
 		},
-		close: function (e) {
-			this.data('Q/dialog').close(e);
+		close: function (options) {
+			this.data('Q/dialog').close(null, options);
 		}
 	}
 
